@@ -73,22 +73,12 @@ int main(){
                 Printbytemaps(&ext_bytemaps);
                 continue;
             }
-             /*Grabarinodosydirectorio(&directorio,&ext_blq_inodos,fent);
-         GrabarByteMaps(&ext_bytemaps,fent);
-         GrabarSuperBloque(&ext_superblock,fent);
-         if (grabardatos)
-           GrabarDatos(&memdatos,fent);
-         grabardatos = 0;*/
          //...
          // Escritura de metadatos en comandos rename, remove, copy     
          if (strcmp(orden,"salir")==0){
 
             return 0;
          }
-           else
-            {
-                printf("ERROR: Comando ilegal [bytemaps, copy, dir, info, imprimir, rename, remove, salir]\n");
-            }
      }
 }  
 
@@ -126,5 +116,6 @@ int ComprobarComando(char *strcomando, char *orden, char *argumento1, char *argu
 
 
 void Directorio(EXT_ENTRADA_DIR *directorio, EXT_BLQ_INODOS *inodos){
+
 
 }
