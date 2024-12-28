@@ -83,6 +83,42 @@ int main(){
                 Directorio(directorio, &ext_blq_inodos); // antes &directorio
                 continue;
             }
+             else if (strcmp(orden, "imprimir") == 0)
+            {
+                if (argumento1[0] != '\0')
+                {
+                    Imprimir(directorio, &ext_blq_inodos, memdatos, argumento1);
+                    continue;
+                }
+                else
+                {
+                    printf("Error: Uso incorrecto del comando 'imprimir'. Debe proporcionar el nombre del archivo a imprimir.\n");
+                    continue;
+                }
+            }
+            else if (strcmp(orden, "remove") == 0)
+            {
+                if (argumento1[0] != '\0')
+                {
+                    int resultado = Borrar(directorio, &ext_blq_inodos, &ext_bytemaps, &ext_superblock, argumento1, fent);
+
+                    if (resultado == 0)
+                    {
+                        printf("Archivo '%s' eliminado correctamente.\n", argumento1);
+                        grabardatos = 1; // Marcar para grabar datos después de la eliminación
+                    }
+                    else
+                    {
+                        printf("ERROR: No se pudo eliminar el archivo '%s'.\n", argumento1);
+                    }
+                    continue;
+                }
+                else
+                {
+                    printf("Error: Uso incorrecto del comando 'remove'. Debe proporcionar el nombre del archivo a eliminar.\n");
+                    continue;
+                }
+            }
               else if (strcmp(orden, "rename") == 0)
             {
                 if (argumento1[0] != '\0' && argumento2[0] != '\0')
@@ -96,6 +132,35 @@ int main(){
                 else
                 {
                     printf("Error: Uso incorrecto del comando 'rename'. Debe proporcionar el nombre antiguo y el nuevo.\n");
+                    continue;
+                }
+                
+            }
+             else if (strcmp(orden, "copy") == 0)
+            {
+                if (argumento1[0] != '\0' && argumento2[0] != '\0')
+                {
+                    int resultado = Copiar(directorio, &ext_blq_inodos, &ext_bytemaps, &ext_superblock, memdatos, argumento1, argumento2, fent);
+
+                    if (resultado == 0)
+                    {
+                        printf("Archivo '%s' copiado a '%s' exitosamente.\n", argumento1, argumento2);
+                    }
+                    else if (resultado == -1)
+                    {
+                        printf("ERROR: No se pudo copiar el archivo '%s' a '%s'.\n", argumento1, argumento2);
+                    }
+                    else
+                    {
+                        printf("ERROR: Problema al intentar copiar el archivo '%s' a '%s'.\n", argumento1, argumento2);
+                    }
+
+                    grabardatos = 1; // Marcar para grabar datos después de la copia
+                    continue;
+                }
+                else
+                {
+                    printf("Error: Uso incorrecto del comando 'copy'. Debe proporcionar el nombre del archivo de origen y destino.\n");
                     continue;
                 }
             }
@@ -224,6 +289,144 @@ int Renombrar(EXT_ENTRADA_DIR *directorio, EXT_BLQ_INODOS *inodos, char *nombrea
     }
     printf("ERROR: El archivo %s no se encontro.\n", nombreantiguo);
     return 0;
+}
+int Imprimir(EXT_ENTRADA_DIR *directorio, EXT_BLQ_INODOS *inodos, EXT_DATOS *memdatos, char *nombre)
+{
+    int inodo = BuscaFich(directorio, inodos, nombre);
+    if (inodo != -1)
+    {
+        printf("\n");
+        int inodoIndex = inodo - 2; // El índice del inodo es el número del inodo menos 2 (reservados)
+        for (int i = 0; i < MAX_NUMS_BLOQUE_INODO && inodos->blq_inodos[inodoIndex].i_nbloque[i] != NULL_BLOQUE; ++i)
+        {
+            int bloqueIndex = inodos->blq_inodos[inodoIndex].i_nbloque[i];
+            printf("%s", memdatos[bloqueIndex].dato);
+        }
+        printf("\n");
+        return 1; // Éxito al imprimir
+    }
+    else
+    {
+        printf("ERROR: El archivo %s no encontrado.\n", nombre);
+        return 0; // Error al imprimir
+    }
+}
+
+int Borrar(EXT_ENTRADA_DIR *directorio, EXT_BLQ_INODOS *inodos, EXT_BYTE_MAPS *ext_bytemaps, EXT_SIMPLE_SUPERBLOCK *ext_superblock, char *nombre,  FILE *fich){
+  if(BuscaFich(directorio, inodos, nombre) == -1){
+    printf("ERROR: el fichero no existe\n");
+    return -1;
+  }
+  for(int i = 0; i < MAX_INODOS; i++) {
+    if(directorio[i].dir_inodo != NULL_INODO && strcmp(directorio[i].dir_nfich, nombre) == 0) {
+      int inodo = directorio[i].dir_inodo;
+      for (int j = 0; j < MAX_NUMS_BLOQUE_INODO; j++) {
+        int bloque = inodos->blq_inodos[inodo].i_nbloque[j];
+        if (bloque != NULL_BLOQUE) {
+          ext_bytemaps->bmap_bloques[bloque] = 0;
+          ext_superblock->s_free_blocks_count++; 
+        }
+      }
+      ext_bytemaps->bmap_inodos[inodo] = 0;
+      ext_superblock->s_free_inodes_count++; 
+
+      memset(&directorio[i], 0, sizeof(EXT_ENTRADA_DIR));
+      directorio[i].dir_inodo = NULL_INODO;
+      return 0;
+    }
+  }
+  return 1;
+}
+int Copiar(EXT_ENTRADA_DIR *directorio, EXT_BLQ_INODOS *inodos, EXT_BYTE_MAPS *ext_bytemaps, EXT_SIMPLE_SUPERBLOCK *ext_superblock, EXT_DATOS *memdatos, char *nombreorigen, char *nombredestino, FILE *fich)
+{
+    int i;
+    for (i = 0; i < MAX_FICHEROS; i++)
+    {
+        if (strcmp(directorio[i].dir_nfich, nombreorigen) == 0)
+        {
+            int inodeIndexSrc = directorio[i].dir_inodo;
+
+            for (int j = 0; j < MAX_FICHEROS; j++)
+            {
+                if (strcmp(directorio[j].dir_nfich, nombredestino) == 0)
+                {
+                    printf("Error: El archivo '%s' ya existe.\n", nombredestino);
+                    return -1; 
+                }
+            }
+
+            int freeDirEntry = -1;
+            for (int j = 0; j < MAX_FICHEROS; j++)
+            {
+                if (directorio[j].dir_inodo == NULL_INODO)
+                {
+                    freeDirEntry = j;
+                    break;
+                }
+            }
+
+            if (freeDirEntry == -1)
+            {
+                printf("Error: No hay entradas de directorio disponibles para '%s'.\n", nombredestino);
+                return -1; 
+            }
+
+            int freeInode = -1;
+            for (int j = 0; j < MAX_INODOS; j++)
+            {
+                if (ext_bytemaps->bmap_inodos[j] == 0)
+                {
+                    freeInode = j;
+                    break;
+                }
+            }
+
+            if (freeInode == -1)
+            {
+                printf("Error: No hay inodos disponibles para '%s'.\n", nombredestino);
+                return -1; 
+            }
+
+            for (int k = 0; k < MAX_NUMS_BLOQUE_INODO; k++)
+            {
+                if (inodos->blq_inodos[inodeIndexSrc].i_nbloque[k] != NULL_BLOQUE)
+                {
+                    int freeBlock = -1;
+                    for (int l = 0; l < MAX_BLOQUES_DATOS; l++)
+                    {
+                        if (ext_bytemaps->bmap_bloques[l] == 0)
+                        {
+                            freeBlock = l;
+                            break;
+                        }
+                    }
+
+                    if (freeBlock == -1)
+                    {
+                        printf("Error: No hay bloques de datos disponibles para '%s'.\n", nombredestino);
+                        return -1; 
+                    }
+
+                    // Actualizar bytemaps para el archivo destino
+                    ext_bytemaps->bmap_inodos[freeInode] = 1;
+                    ext_bytemaps->bmap_bloques[freeBlock] = 1;
+
+                    strcpy(directorio[freeDirEntry].dir_nfich, nombredestino);
+                    directorio[freeDirEntry].dir_inodo = freeInode;
+                    inodos->blq_inodos[freeInode].size_fichero = inodos->blq_inodos[inodeIndexSrc].size_fichero;
+
+                    for (int m = 0; m < MAX_NUMS_BLOQUE_INODO; m++)
+                    {
+                        inodos->blq_inodos[freeInode].i_nbloque[m] = NULL_BLOQUE;
+                    }
+
+                    memcpy(memdatos[freeBlock].dato, memdatos[inodos->blq_inodos[inodeIndexSrc].i_nbloque[k]].dato, SIZE_BLOQUE);
+                    inodos->blq_inodos[freeInode].i_nbloque[k] = freeBlock;
+                }
+            }
+            return 0; 
+        }
+    }
 }
 
 void Grabarinodosydirectorio(EXT_ENTRADA_DIR *directorio, EXT_BLQ_INODOS *inodos, FILE *fich)
